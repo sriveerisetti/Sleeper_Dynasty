@@ -26,13 +26,15 @@ async def collect_league_chain(client: SleeperClient, league_id: str) -> list[di
 
 
 async def get_matchups_for_league(
-    client: SleeperClient, league_id: str, max_week: int = 18
+    client: SleeperClient,
+    league_id: str,
+    playoff_week_start: int | None = None,
+    max_week: int = 18,
 ) -> list[dict]:
     """Fetch all matchups for a single league across all weeks.
 
-    Sleeper returns an empty list for weeks that haven't been played; we keep
-    going until we've checked the playoff window. Tags each matchup with its
-    week and source league_id.
+    Tags each matchup with its week, league_id, and is_playoff flag.
+    Skips weeks where no valid points have been scored (future/unplayed weeks).
     """
     all_matchups = []
     for week in range(1, max_week + 1):
@@ -42,12 +44,20 @@ async def get_matchups_for_league(
             continue
         if not weekly:
             continue
-        # Skip weeks where no points have been scored yet (future weeks)
-        if all(m.get("points", 0) == 0 for m in weekly):
+
+        # Only include weeks where at least one team has real non-zero points
+        valid_points = [
+            m.get("points") for m in weekly
+            if m.get("points") is not None and m.get("points") != 0
+        ]
+        if not valid_points:
             continue
+
+        is_playoff_week = bool(playoff_week_start and week >= playoff_week_start)
         for m in weekly:
             m["week"] = week
             m["league_id"] = league_id
+            m["is_playoff"] = is_playoff_week
         all_matchups.extend(weekly)
     return all_matchups
 
@@ -57,13 +67,16 @@ async def get_all_matchups_all_seasons(
 ) -> tuple[list[dict], list[dict]]:
     """Get matchups from current league + every prior season.
 
-    Returns (matchups, league_chain). league_chain is useful for tagging
-    seasons in the response.
+    Returns (matchups, league_chain). Uses each league's playoff_week_start
+    to correctly tag playoff matchups.
     """
     chain = await collect_league_chain(client, league_id)
     all_matchups = []
     for league in chain:
-        season_matchups = await get_matchups_for_league(client, league["league_id"])
+        playoff_week_start = (league.get("settings") or {}).get("playoff_week_start")
+        season_matchups = await get_matchups_for_league(
+            client, league["league_id"], playoff_week_start=playoff_week_start
+        )
         for m in season_matchups:
             m["season"] = league.get("season")
         all_matchups.extend(season_matchups)
@@ -71,21 +84,35 @@ async def get_all_matchups_all_seasons(
 
 
 def pair_matchups(matchups: list[dict]) -> list[tuple[dict, dict]]:
-    """Sleeper returns matchups as a flat list keyed by matchup_id; pair them.
+    """Pair flat Sleeper matchup rows into (team_a, team_b) tuples.
 
-    Now also keys on league_id so matchups from different seasons don't collide.
+    Keys on (league_id, week, matchup_id). Skips bye-week entries
+    (matchup_id is None/0) and groups that don't resolve to exactly 2 teams.
     """
     by_matchup: dict[tuple, list[dict]] = defaultdict(list)
     for m in matchups:
-        key = (m.get("league_id"), m["week"], m["matchup_id"])
+        mid = m.get("matchup_id")
+        if not mid:
+            continue  # bye week or unassigned
+        if m.get("points") is None:
+            continue
+        key = (m.get("league_id"), m["week"], mid)
         by_matchup[key].append(m)
     return [tuple(pair) for pair in by_matchup.values() if len(pair) == 2]
 
 
-def compute_rivalries(paired_matchups: list[tuple[dict, dict]]) -> list[dict]:
+def compute_rivalries(
+    paired_matchups: list[tuple[dict, dict]],
+    include_playoffs: bool = True,
+) -> list[dict]:
     """Aggregate head-to-head records between every pair of teams across all seasons."""
     h2h: dict[tuple[int, int], dict] = {}
     for a, b in paired_matchups:
+        if a.get("points") is None or b.get("points") is None:
+            continue
+        if not include_playoffs and (a.get("is_playoff") or b.get("is_playoff")):
+            continue
+
         ids = tuple(sorted([a["roster_id"], b["roster_id"]]))
         if ids not in h2h:
             h2h[ids] = {
@@ -94,16 +121,19 @@ def compute_rivalries(paired_matchups: list[tuple[dict, dict]]) -> list[dict]:
                 "team_a_wins": 0,
                 "team_b_wins": 0,
                 "games_played": 0,
+                "playoff_games": 0,
                 "total_margin": 0.0,
                 "total_points": 0.0,
             }
         rec = h2h[ids]
         rec["games_played"] += 1
+        if a.get("is_playoff"):
+            rec["playoff_games"] += 1
         rec["total_points"] += a["points"] + b["points"]
         margin = abs(a["points"] - b["points"])
         rec["total_margin"] += margin
         if a["points"] == b["points"]:
-            continue  # tie - no win credited
+            continue  # tie — no win credited
         winner = a if a["points"] > b["points"] else b
         if winner["roster_id"] == ids[0]:
             rec["team_a_wins"] += 1
@@ -112,13 +142,14 @@ def compute_rivalries(paired_matchups: list[tuple[dict, dict]]) -> list[dict]:
 
     results = []
     for rec in h2h.values():
-        rec["avg_margin"] = rec["total_margin"] / rec["games_played"] if rec["games_played"] else 0
+        g = rec["games_played"]
+        rec["avg_margin"] = rec["total_margin"] / g if g else 0
         results.append(rec)
     return results
 
 
-def heated_rivalries(rivalries: list[dict], min_games: int = 1) -> list[dict]:
-    """Closest matchups: balanced records first, then small avg margin."""
+def heated_rivalries(rivalries: list[dict], min_games: int = 3) -> list[dict]:
+    """Closest matchups: balanced records and small avg margin."""
     qualifying = [r for r in rivalries if r["games_played"] >= min_games]
     return sorted(
         qualifying,
@@ -126,7 +157,7 @@ def heated_rivalries(rivalries: list[dict], min_games: int = 1) -> list[dict]:
     )[:5]
 
 
-def lopsided_rivalries(rivalries: list[dict], min_games: int = 2) -> list[dict]:
+def lopsided_rivalries(rivalries: list[dict], min_games: int = 3) -> list[dict]:
     """One-sided matchups: biggest win-disparity first."""
     qualifying = [r for r in rivalries if r["games_played"] >= min_games]
     return sorted(
@@ -140,6 +171,7 @@ def closest_games(paired_matchups: list[tuple[dict, dict]], n: int = 5) -> list[
         {
             "season": a.get("season"),
             "week": a["week"],
+            "is_playoff": a.get("is_playoff", False),
             "team_a_id": str(a["roster_id"]),
             "team_b_id": str(b["roster_id"]),
             "team_a_score": a["points"],
@@ -157,6 +189,7 @@ def biggest_blowouts(paired_matchups: list[tuple[dict, dict]], n: int = 5) -> li
         {
             "season": a.get("season"),
             "week": a["week"],
+            "is_playoff": a.get("is_playoff", False),
             "team_a_id": str(a["roster_id"]),
             "team_b_id": str(b["roster_id"]),
             "team_a_score": a["points"],
@@ -170,14 +203,12 @@ def biggest_blowouts(paired_matchups: list[tuple[dict, dict]], n: int = 5) -> li
 
 
 def current_form(paired_matchups: list[tuple[dict, dict]], last_n: int = 5) -> list[dict]:
-    """Each team's most recent W/L results.
-
-    Sorts within each team by (season DESC, week DESC) so 'last 5' really means
-    the most recent across all seasons.
-    """
+    """Each team's most recent W/L results across all seasons."""
     by_team: dict[int, list[tuple]] = defaultdict(list)
     for a, b in paired_matchups:
-        season = a.get("season") or "0"
+        if a.get("points") is None or b.get("points") is None:
+            continue
+        season = str(a.get("season") or "0")
         a_won = a["points"] > b["points"]
         b_won = b["points"] > a["points"]
         a_result = "W" if a_won else ("L" if b_won else "T")
@@ -197,10 +228,14 @@ def current_form(paired_matchups: list[tuple[dict, dict]], last_n: int = 5) -> l
     return results
 
 
-def clutch_performers(paired_matchups: list[tuple[dict, dict]], threshold: float = 10.0) -> list[dict]:
-    """Win-loss record in games decided by less than `threshold` points."""
+def clutch_performers(
+    paired_matchups: list[tuple[dict, dict]], threshold: float = 10.0
+) -> list[dict]:
+    """Win-loss record in games decided by <= threshold points."""
     by_team: dict[int, dict] = defaultdict(lambda: {"wins": 0, "losses": 0})
     for a, b in paired_matchups:
+        if a.get("points") is None or b.get("points") is None:
+            continue
         if a["points"] == b["points"]:
             continue
         if abs(a["points"] - b["points"]) > threshold:

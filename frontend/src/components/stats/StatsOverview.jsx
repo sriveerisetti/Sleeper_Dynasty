@@ -31,13 +31,28 @@ export default function StatsOverview() {
   const seasons = overview.seasons_loaded || [];
   const totalGames = overview.total_matchups || 0;
 
+  const regularSeason = overview.regular_season_matchups ?? totalGames;
+  const playoffGames = overview.playoff_matchups ?? 0;
+
   return (
     <div className="space-y-6">
-      <p className="text-sm text-ink-500">
-        Showing all-time stats across {seasons.length} season{seasons.length === 1 ? '' : 's'}
-        {seasons.length > 0 && <> ({seasons.filter(Boolean).join(', ')})</>}
-        {' · '}{totalGames} games played
-      </p>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-ink-500">
+          {seasons.length} season{seasons.length === 1 ? '' : 's'}
+          {seasons.length > 0 && <> ({seasons.filter(Boolean).join(', ')})</>}
+        </span>
+        <span className="w-px h-4 bg-warm-300" />
+        <span className="text-ink-500">
+          <span className="font-semibold text-ink-900">{regularSeason}</span> regular season games
+        </span>
+        <span className="w-px h-4 bg-warm-300" />
+        <span className="text-ink-500">
+          <span className="font-semibold text-ink-900">{playoffGames}</span> playoff games
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-2.5 py-0.5 text-xs font-semibold">
+          ✓ Playoffs included
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <RivalriesCard

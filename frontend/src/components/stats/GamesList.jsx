@@ -12,9 +12,16 @@ export default function GamesList({ title, games = [] }) {
                 {i + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="section-label mb-1">
-                  {g.season ? `${g.season} · ` : ''}Week {g.week}
-                </p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="section-label">
+                    {g.season ? `${g.season} · ` : ''}Week {g.week}
+                  </p>
+                  {g.is_playoff && (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-bold">
+                      Playoffs
+                    </span>
+                  )}
+                </div>
                 <p className="font-semibold text-sm truncate">
                   {g.team_a_name}{' '}
                   <span className="text-ink-400 font-normal">vs</span>{' '}

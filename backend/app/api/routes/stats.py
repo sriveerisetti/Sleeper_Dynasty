@@ -71,9 +71,14 @@ async def get_overview():
 
     # Get information about the seasons, total matchups, teams, heated rivalries, 
     # lopsided rivalries, closest games, biggest blowouts, current form, clutch performers 
+    regular_season = [p for p in paired if not p[0].get("is_playoff")]
+    playoff = [p for p in paired if p[0].get("is_playoff")]
+
     return {
         "seasons_loaded": [c.get("season") for c in chain],
         "total_matchups": len(paired),
+        "regular_season_matchups": len(regular_season),
+        "playoff_matchups": len(playoff),
         "team_names": lookup,
         "heated_rivalries": _attach_names(
             stats_service.heated_rivalries(rivalries), lookup, ["team_a_id", "team_b_id"]
