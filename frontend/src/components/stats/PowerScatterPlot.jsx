@@ -1,7 +1,54 @@
+import { useState } from 'react';
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine, Label,
 } from 'recharts';
+
+const FORMULA_ITEMS = [
+  { color: '#e05c2c', label: 'Win %',    weight: '40%', note: 'Overall win percentage, all games' },
+  { color: '#16a34a', label: 'Pts/Game', weight: '35%', note: 'Average points scored per game' },
+  { color: '#2563eb', label: 'Last 5',   weight: '25%', note: 'Wins in the 5 most recent games' },
+];
+
+function FormulaTooltip() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block">
+      <button
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-warm-200 text-ink-500 hover:bg-warm-300 transition-colors text-xs font-bold"
+        aria-label="How power score is calculated"
+      >
+        ?
+      </button>
+      {open && (
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 rounded-xl bg-ink-900 text-white p-4 shadow-xl text-xs">
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-ink-900" />
+          <p className="font-semibold text-sm mb-2">How Power Score Works</p>
+          <p className="text-warm-400 mb-3 leading-relaxed">
+            Each metric is min-max normalized to 0–100 across all teams (best = 100, worst = 0), then combined:
+          </p>
+          <ul className="space-y-2 mb-3">
+            {FORMULA_ITEMS.map((f) => (
+              <li key={f.label} className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: f.color }} />
+                <span className="font-bold w-14">{f.label}</span>
+                <span className="text-primary-400 font-bold w-8">{f.weight}</span>
+                <span className="text-warm-400">{f.note}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-warm-500 border-t border-white/10 pt-2 leading-relaxed">
+            The chart plots each team by points/game (X) and win % (Y). Dashed lines show the league median.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TEAM_COLORS = [
   '#e05c2c', '#2563eb', '#16a34a', '#9333ea',
@@ -79,7 +126,10 @@ export default function PowerScatterPlot({ rankings = [] }) {
   return (
     <div className="card lg:col-span-2">
       <div className="flex items-baseline justify-between mb-1">
-        <h3 className="text-2xl">Power Rankings</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-2xl">Power Rankings</h3>
+          <FormulaTooltip />
+        </div>
         <p className="text-xs text-ink-500 font-medium">Pts/game vs Win %</p>
       </div>
       <p className="text-sm text-ink-500 mb-5">

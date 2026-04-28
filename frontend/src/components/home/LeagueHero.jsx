@@ -1,23 +1,47 @@
 export default function LeagueHero({ league }) {
   const settings = league?.settings || {};
   const stats = [
-    { label: 'Teams', value: league?.total_rosters ?? '—' },
-    { label: 'Season', value: league?.season ?? '—' },
+    { label: 'Teams',         value: league?.total_rosters ?? '—' },
+    { label: 'Season',        value: league?.season ?? '—' },
     { label: 'Playoff Teams', value: settings.playoff_teams ?? '—' },
-    { label: 'PPR', value: league?.scoring_settings?.rec ? `${league.scoring_settings.rec} pt` : '—' },
+    { label: 'PPR',           value: league?.scoring_settings?.rec ? `${league.scoring_settings.rec} pt` : '—' },
   ];
 
   return (
     <section className="relative rounded-2xl overflow-hidden shadow-xl">
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-primary-900 to-primary-700" />
-      {/* Decorative texture */}
-      <div className="absolute inset-0 opacity-10"
+      {/* Decorative glow */}
+      <div
+        className="absolute inset-0 opacity-10"
         style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #d97706 0%, transparent 50%)' }}
       />
-      <div className="absolute top-0 right-0 w-64 h-64 opacity-5"
-        style={{ backgroundImage: 'radial-gradient(circle, #fdf9f3 0%, transparent 70%)' }}
-      />
+
+      {/* Bouncing football */}
+      <div
+        className="absolute bottom-6 pointer-events-none select-none"
+        style={{ animation: 'footballBounce 6s ease-in-out infinite' }}
+      >
+        <span
+          className="text-4xl block"
+          style={{ animation: 'footballSpin 6s linear infinite' }}
+        >
+          🏈
+        </span>
+      </div>
+
+      <style>{`
+        @keyframes footballBounce {
+          0%   { left: 5%;   }
+          50%  { left: 88%;  }
+          100% { left: 5%;   }
+        }
+        @keyframes footballSpin {
+          0%   { transform: rotate(0deg);   }
+          50%  { transform: rotate(360deg); }
+          100% { transform: rotate(720deg); }
+        }
+      `}</style>
 
       {/* Content */}
       <div className="relative px-8 sm:px-12 py-12 sm:py-16">
