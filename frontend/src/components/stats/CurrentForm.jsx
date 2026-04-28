@@ -2,7 +2,7 @@ export default function CurrentForm({ form = [] }) {
   const sorted = [...form].sort((a, b) => b.points_last_5 - a.points_last_5);
 
   return (
-    <div className="card lg:col-span-2">
+    <div className="card">
       <div className="flex items-baseline justify-between mb-4">
         <h3 className="text-2xl">Current Form</h3>
         <p className="text-xs text-ink-500 font-medium">Last 5 games · by points</p>

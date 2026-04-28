@@ -2,7 +2,7 @@ export default function ClutchTable({ performers = [] }) {
   const sorted = [...performers].sort((a, b) => b.win_pct - a.win_pct);
 
   return (
-    <div className="card lg:col-span-2">
+    <div className="card">
       <div className="flex items-baseline justify-between mb-4">
         <h3 className="text-2xl">Clutch Performers</h3>
         <p className="text-xs text-ink-500 font-medium">Games decided by ≤10 pts</p>
