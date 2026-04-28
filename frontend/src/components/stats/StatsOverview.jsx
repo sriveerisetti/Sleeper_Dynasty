@@ -6,6 +6,7 @@ import RivalriesCard from './RivalriesCard';
 import GamesList from './GamesList';
 import CurrentForm from './CurrentForm';
 import ClutchTable from './ClutchTable';
+import PowerRankings from './PowerRankings';
 
 export default function StatsOverview() {
   const [overview, setOverview] = useState(null);
@@ -73,6 +74,7 @@ export default function StatsOverview() {
           title="Biggest Blowouts"
           games={overview.biggest_blowouts}
         />
+        <PowerRankings rankings={overview.power_rankings} />
         <CurrentForm form={overview.current_form} />
         <ClutchTable performers={overview.clutch_performers} />
       </div>

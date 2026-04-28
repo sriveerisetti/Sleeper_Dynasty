@@ -253,3 +253,112 @@ def clutch_performers(
             "win_pct": rec["wins"] / total if total else 0.0,
         })
     return sorted(results, key=lambda r: -r["win_pct"])
+
+
+def _normalize(values: list[float]) -> list[float]:
+    """Min-max normalize a list of floats to 0–100. All equal → 50."""
+    lo, hi = min(values), max(values)
+    if hi == lo:
+        return [50.0] * len(values)
+    return [(v - lo) / (hi - lo) * 100 for v in values]
+
+
+def power_rankings(
+    paired_matchups: list[tuple[dict, dict]],
+    weight_record: float = 0.40,
+    weight_points: float = 0.35,
+    weight_form: float = 0.25,
+    form_games: int = 5,
+) -> list[dict]:
+    """Rank every team using a weighted, normalized composite score.
+
+    Components:
+      - Record (win %)           — weight_record
+      - Points For per game      — weight_points
+      - Recent form (last N wins)— weight_form
+    Each component is min-max normalized to 0–100 before weighting.
+    """
+    by_team: dict[int, dict] = defaultdict(lambda: {
+        "wins": 0, "losses": 0, "ties": 0,
+        "total_points": 0.0, "games": 0,
+        "recent": [],  # (season, week, pts, won)
+    })
+
+    for a, b in paired_matchups:
+        if a.get("points") is None or b.get("points") is None:
+            continue
+        a_won = a["points"] > b["points"]
+        b_won = b["points"] > a["points"]
+        season = str(a.get("season") or "0")
+
+        for side, opp, won in [(a, b, a_won), (b, a, b_won)]:
+            rec = by_team[side["roster_id"]]
+            rec["games"] += 1
+            rec["total_points"] += side["points"]
+            if won:
+                rec["wins"] += 1
+            elif side["points"] == opp["points"]:
+                rec["ties"] += 1
+            else:
+                rec["losses"] += 1
+            rec["recent"].append((season, side["week"], side["points"], won))
+
+    if not by_team:
+        return []
+
+    team_ids = list(by_team.keys())
+    raw: dict[int, dict] = {}
+    for tid in team_ids:
+        rec = by_team[tid]
+        g = rec["games"] or 1
+        total = rec["wins"] + rec["losses"] + rec["ties"]
+        win_pct = (rec["wins"] + 0.5 * rec["ties"]) / total if total else 0.0
+        pts_per_game = rec["total_points"] / g
+
+        # Recent form: wins in last form_games
+        recent = sorted(rec["recent"], key=lambda x: (x[0], x[1]), reverse=True)[:form_games]
+        form_wins = sum(1 for _, _, _, won in recent if won)
+
+        raw[tid] = {
+            "win_pct": win_pct,
+            "pts_per_game": pts_per_game,
+            "form_wins": form_wins,
+            "wins": rec["wins"],
+            "losses": rec["losses"],
+            "ties": rec["ties"],
+            "games": rec["games"],
+        }
+
+    # Normalize each component across all teams
+    win_pcts    = _normalize([raw[t]["win_pct"]     for t in team_ids])
+    pts_scores  = _normalize([raw[t]["pts_per_game"] for t in team_ids])
+    form_scores = _normalize([raw[t]["form_wins"]    for t in team_ids])
+
+    results = []
+    for i, tid in enumerate(team_ids):
+        r = raw[tid]
+        score = (
+            weight_record * win_pcts[i] +
+            weight_points * pts_scores[i] +
+            weight_form   * form_scores[i]
+        )
+        results.append({
+            "team_id": str(tid),
+            "score": round(score, 1),
+            "wins": r["wins"],
+            "losses": r["losses"],
+            "ties": r["ties"],
+            "pts_per_game": round(r["pts_per_game"], 1),
+            "form_wins": r["form_wins"],
+            "form_games": len(sorted(by_team[tid]["recent"],
+                                     key=lambda x: (x[0], x[1]), reverse=True)[:form_games]),
+            # Raw normalized components (useful for tooltip breakdown)
+            "score_record": round(win_pcts[i], 1),
+            "score_points": round(pts_scores[i], 1),
+            "score_form":   round(form_scores[i], 1),
+        })
+
+    results.sort(key=lambda r: -r["score"])
+    for rank, r in enumerate(results, 1):
+        r["rank"] = rank
+    return results

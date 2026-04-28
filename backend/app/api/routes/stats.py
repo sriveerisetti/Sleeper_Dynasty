@@ -98,6 +98,9 @@ async def get_overview():
         "clutch_performers": _attach_names(
             stats_service.clutch_performers(paired), lookup, ["team_id"]
         ),
+        "power_rankings": _attach_names(
+            stats_service.power_rankings(paired), lookup, ["team_id"]
+        ),
     }
 
 
